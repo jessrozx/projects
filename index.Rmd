@@ -1,0 +1,690 @@
+---
+title: "Laos: Preliminary Allometric Analyses"
+author: "Jessica Orozco"
+output: 
+   html_document: 
+     theme: paper
+     toc: true
+     toc_depth: 3
+     toc_collapsed: true
+     toc_float: true
+---
+
+<script>
+$(document).ready(function() {
+  $items = $('div#TOC li');
+  $items.each(function(idx) {
+    num_ul = $(this).parentsUntil('#TOC').length;
+    $(this).css({'text-indent': num_ul * 10, 'padding-left': 0});
+  });
+
+});
+</script>
+
+<div style="margin-bottom:75px;">
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Dropbox/Maciej Jessica O/Laos_data")
+
+# copy dataframes from rmarkdown because I messed stuff up for the total biomass plots 
+library(cowplot)
+library(ggpubr)
+library(Rmisc)
+library(ggthemes)
+library(lintr)
+library(styler)
+library(prettycode)
+library(readxl)
+library(csvread)
+library(tidyverse)
+library(tinytex)
+
+
+
+
+#Load data ----------------------------------
+allo <- read_xlsx("allometry.xlsx")
+
+allo$location <- as.factor(allo$location)
+allo$section <- factor(allo$section, levels = c(paste(seq(10, 130, by = 10 ))))
+allo$tree <- as.factor(allo$tree)
+allo <- allo %>%
+  mutate(section = factor(section, levels = rev(levels(section)))) %>%
+  mutate(tot_leaves_area = tot_fr_leaves * m2_gfw) %>% 
+  mutate(tot_dry_leaves = tot_fr_leaves * dry_10_fraction) %>% 
+  mutate(tot_dry_wd = (tot_fr_wd * wd_dry_fraction) ) %>% 
+  mutate(tot_dry_cherries =  (tot_cherries * cherries_dry_fraction)) %>%
+  mutate(tot_stump_dry = (stump_fr * stump_dry_fraction)) %>% 
+  mutate(tot_dry_sr =  (tot_fr_sr * sr_dry_fraction)) %>% 
+  mutate(tot_dry_fr = (tot_fr_fr * fr_dry_fraction)) 
+```
+</div>
+
+## __Above and Belowground Biomass Distribution__
+<div style="margin-bottom:50px;">
+</div>
+
+
+
+
+ The following two graphs represent the average amount of plant (fresh & dry) tissue that lies aboveground and belowground in Phetlamka and Xekatam; either the total biomass ( __Fig. 1__) or the proportion of total tissue ( __Fig. 2__ ). The tissues in the aboveground portion include leaf, cherry , branch and stem biomass while the belowground includes the stump, structural and fine root biomass. It appears that  trees in both locations produce and distribute their above and below biomass similiarly (statistical anaylysis in process). The low amount of belowground may indicate that aboveground tissue plays an important role in energy storage. 
+
+ 
+
+
+```{r include= FALSE}
+above_below_df <- allo %>%
+  group_by(location, tree) %>%
+  summarise_at(vars(
+    tot_dry_leaves, tot_fr_leaves, tot_dry_wd, tot_fr_wd,
+    tot_dry_cherries, tot_cherries, tot_stump_dry, stump_fr,
+    tot_dry_sr, tot_fr_sr, tot_dry_fr, tot_fr_fr
+  ), funs(sum)) %>%
+  mutate(tot_above_fr = (tot_fr_leaves + tot_fr_wd + tot_cherries)) %>%
+  mutate(tot_below_fr = (stump_fr + tot_fr_sr + tot_fr_fr)) %>%
+  mutate(tot_above_dry = (tot_dry_leaves + tot_dry_wd + tot_dry_cherries)) %>%
+  mutate(tot_below_dry = (tot_stump_dry + tot_dry_sr + tot_dry_fr)) %>%
+  mutate(tot_dry_biomass = (tot_dry_leaves + tot_dry_wd + tot_dry_cherries + tot_stump_dry + tot_dry_sr + tot_dry_fr)) %>%
+  mutate(tot_fr_biomass = (tot_fr_leaves + tot_fr_wd + tot_cherries + stump_fr + tot_fr_sr + tot_fr_fr)) %>%
+  mutate(fra_above_fr = (tot_above_fr / tot_fr_biomass)) %>% 
+  mutate(fra_below_fr = (tot_below_fr / tot_fr_biomass)) %>% 
+  mutate(fra_above_dry = (tot_above_dry / tot_dry_biomass)) %>% 
+  mutate(fra_below_dry = (tot_below_dry / tot_dry_biomass)) %>% 
+  ungroup() %>% 
+  select(location,tree,tot_above_fr : fra_below_dry) %>% 
+  gather(measurement,value, tot_above_fr : fra_below_dry)  
+  
+
+
+summ_above_below_df <-above_below_df %>% 
+  summarySE(measurevar = "value", groupvars =c("location","measurement")) %>% 
+  mutate(status = if_else(str_detect(measurement,"dry"),"Dry Biomass","Fresh Biomass")) %>% 
+  mutate(status = factor(status,levels= c('Fresh Biomass','Dry Biomass'))) %>% 
+  mutate(value= if_else(str_detect(measurement,"above"),value,-value)) %>% 
+  mutate(direction = if_else(str_detect(measurement,"above"),"Above","Below")) %>% 
+  mutate(direction2 = "Above_Below")
+
+
+
+
+```
+
+<div style="margin-bottom:25px;">
+</div>
+### Total biomass(g)
+<div style="margin-bottom:25px;">
+</div>
+```{r graph_tot_a_b, echo = FALSE, fig.width = 7, fig.height = 7,fig.cap= '**Fig. 1** Total Fresh and Dry Above and Belowground Biomass (g) Distribution within trees in Phetlamka and Xekatam (±se)'}
+
+colors <- c(
+  "Phetlamka Above" = "#337ab7", "Phetlamka Below" = "#101820FF", "Xekatam Above" = "#b77033",
+  "Xekatam Below" = "#101820FF"
+)
+
+
+breaks <- c("Phetlamka Above", "Xekatam Above", "Phetlamka Below")
+labels <- c("Phetlamka Above", "Xekatam Above", "Below")
+
+
+df <- summ_above_below_df %>%
+  filter(str_detect(measurement, "tot_above|tot_below")) %>%
+  mutate(blend = paste(location, direction))
+
+
+graph_tot_a_b <-
+  ggplot(df, aes(x = direction2, y = value, fill = blend)) +
+  geom_bar(stat = "identity", width = 0.4, alpha = 0.7) +
+  geom_hline(aes(yintercept = 0)) +
+  geom_errorbar(aes(ymin = value - se, ymax = value + se), width = 0.04) +
+  # labs(title= "Above and Belowground Biomass Distribution ")+
+  xlab(NULL) +
+  ylab("Total Biomass (g)") +
+  scale_fill_manual(
+    values = colors,
+    name = "Location",
+    breaks = breaks,
+    labels = labels
+  ) +
+  facet_grid(status ~ location) +
+  theme_pubr() +
+  theme(
+    strip.background = element_rect(size = .7),
+    strip.text.x = element_text(
+      size = 11, face = "bold"
+    ),
+    strip.text.y = element_text(
+      size = 11, face = "bold"
+    ),
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_rect(color = "gray 50", fill = NA)
+  )
+
+print(graph_tot_a_b)
+```
+
+<div style="margin-bottom:50px;">
+</div>
+### Fractional biomass
+<div style="margin-bottom:25px;">
+</div>
+```{r graph_fra_a_b, echo= FALSE, fig.width = 7, fig.height = 7, fig.cap = '**Fig. 2** Fractional Fresh and Dry Above and Belowground Biomass Distribution within trees in Phetlamka and Xekatam (±se)'}
+
+colors <- c(
+  "Phetlamka Above" = "#337ab7", "Phetlamka Below" = "#101820FF", "Xekatam Above" = "#b77033",
+  "Xekatam Below" = "#101820FF"
+)
+
+
+breaks <- c("Phetlamka Above", "Xekatam Above", "Phetlamka Below")
+labels <- c("Phetlamka Above", "Xekatam Above", "Below")
+
+
+df <- summ_above_below_df %>%
+  filter(str_detect(measurement, "fra_above|fra_below")) %>%
+  mutate(blend = paste(location, direction))
+
+graph_fra_a_b <- ggplot(df, aes(x = direction2, y = value, fill = blend)) +
+  geom_bar(stat = "identity", width = .4,alpha = 0.7) +
+  geom_hline(aes(yintercept = 0)) +
+  geom_errorbar(aes(ymin = value - se, ymax = value + se), width = 0.04) +
+  # labs(title= "Above and Belowground Fraction of Biomass Distribution")+
+  xlab(NULL) +
+  ylab("Fraction of Biomass") +
+  scale_fill_manual(
+    values = colors,
+    name = "Location",
+    breaks = breaks,
+    labels = labels
+  ) +
+  facet_grid(status ~ location) +
+  theme_pubr() +
+  theme(
+    strip.background = element_rect(size = 0.7),
+    strip.text.x = element_text(
+      size = 11, face = "bold"
+    ),
+    strip.text.y = element_text(
+      size = 11, face = "bold"
+    ),
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_rect(color = "gray 50", fill = NA)
+  )
+
+print(graph_fra_a_b)
+```
+
+<div style="margin-bottom:50px;">
+</div>
+
+
+## __Vertical Distribution of Biomass__
+
+
+<div style="margin-bottom:50px;">
+</div>
+
+ __Fig. 3 __ and __Fig. 4__ picture the distribution of total biomass (fresh & dry) and fractional biomass (fresh & dry) along the vertical axis. Each section accounts for 10% of the total height, where 10 is at the top of the tree while 100 is at the base. Despite the similarities between their aboveground and belowground biomass distribution ( __Fig. 1__ & __Fig. 2__), the vertical allocation differs along the axis between the two locations. Coffee plants in Phetlamka increase their biomass down the axis giving a 'pyramid-like' appearance while in Xekatam plants seem to maintain a more homogeneous 'box-like' distribution of biomass, these trends are most notable in the leaf and wood. Interestingly, when we look at the total amounts of leaves and wood ( __Fig. 5 __) there isn't much of a difference between the two sites (statistical analysis in process).  
+
+
+### Total biomass(g)
+<div style="margin-bottom:25px;">
+</div>
+```{r include = FALSE}
+total_within_tree<- allo %>% 
+  group_by(location,tree,section) %>% 
+  summarise_at(vars(tot_dry_leaves, tot_fr_leaves, tot_dry_wd, tot_fr_wd,
+                    tot_dry_cherries ,tot_cherries, tot_stump_dry, stump_fr, tot_dry_sr ,tot_fr_sr,tot_dry_fr,tot_fr_fr),funs(sum)) %>% 
+  gather(measurement,value, tot_dry_leaves : tot_fr_fr) %>% 
+  ungroup()
+#stats
+
+ 
+summ_total_within_tree <- total_within_tree %>%
+  summarySE(measurevar = "value", groupvars = c('location','section','measurement')) %>% 
+  mutate(status = if_else(str_detect(measurement,"dry"),"Dry Biomass","Fresh Biomass")) %>% 
+  mutate(status = factor(status,levels= c('Fresh Biomass','Dry Biomass'))) %>% 
+  mutate(value= if_else(str_detect(measurement,"leaves"),value,-value))  
+ 
+## error bar df : because bars are stacked I need to generate a new data for summarise
+
+add_cherries_wood <- summ_total_within_tree%>% 
+   mutate(value2 = if_else(str_detect(measurement,"cherries|wd") ,value, 0)) %>% 
+   group_by(status,location,section) %>% 
+   summarise_at(vars(value2),funs(sum))
+
+error_bar_total <- left_join(summ_total_within_tree, add_cherries_wood) %>% 
+                   mutate(fin_value = if_else(str_detect(measurement,"cherries"), value2,value ))
+
+  
+  
+
+
+
+
+```
+
+
+
+```{r graph_total_within_tree, echo = FALSE,fig.width = 7, fig.height = 7, fig.cap= '**Fig. 3** Total  Fresh and Dry Biomass (g) Distribution within trees across sections in Phetlamka and Xekatam (±se)'}
+
+colors<- c('fra_fr_leaves' = '#66A61E', 'fra_dry_leaves' = '#66A61E', 'tot_fr_leaves' = '#66A61E','tot_dry_leaves' = '#66A61E','tot_cherries' = 'red2','tot_dry_cherries' = 'red2','fra_fr_cherries' = 'red2','fra_dry_cherries' = 'red2','tot_fr_wd' = 'tan4','tot_dry_wd' = 'tan4','fra_fr_wd' = 'tan4','fra_dry_wd' = 'tan4','stump_fr' = 'gray15','tot_stump_dry'='gray15','fra_fr_stump'='gray15', 'fra_dry_stump'='gray15','tot_fr_sr' = 'gray30', 'tot_dry_sr'='gray30','fra_fr_sr'='gray30','fra_dry_sr'='gray30','tot_fr_fr'='gray','tot_dry_fr'='gray','fra_fr_fr'='gray','fra_dry_fr'='gray')  
+
+
+breakss <- c('tot_fr_leaves','tot_cherries','tot_fr_wd','stump_fr','tot_fr_sr','tot_fr_fr') #so it only shows 6 labels
+labelss <- c("Leaves", "Cherries", "Wood", "Stump","Structural Roots","Fine Roots")
+graph_total_within_tree <-    ggplot(summ_total_within_tree,
+                            aes( x = section, y = value, fill = measurement)) +
+  geom_bar(stat= "identity", alpha = 0.85) +
+  xlab("Section") +
+  ylab("Total Biomass(g)") +
+  scale_fill_manual(values=colors,
+                    name= "Tissue",
+                    breaks=breakss,
+                    labels= labelss)+
+  geom_errorbar(data= error_bar_total,aes(ymin = fin_value + se , ymax = fin_value - se, width= 0.04),position= position_dodge(0.4))+
+  coord_flip() + 
+  facet_grid(status~location) +
+  theme_pubr() +
+  theme(strip.background = element_rect(size = 0.7),
+        strip.text.x = element_text(
+          size = 11, face = "bold"),
+        strip.text.y = element_text(
+          size = 11, face = "bold"),
+        panel.border = element_rect(color = "gray 50", fill = NA))
+
+print(graph_total_within_tree)
+
+```
+
+
+```{r include = FALSE}
+fraction_within_tree <-   allo %>% 
+  group_by(location,tree,section) %>% 
+  summarise_at(vars(tot_dry_leaves, tot_fr_leaves, tot_dry_wd, tot_fr_wd,
+                    tot_dry_cherries ,tot_cherries, tot_stump_dry, stump_fr,
+                    tot_dry_sr ,tot_fr_sr,tot_dry_fr,tot_fr_fr),funs(sum)) %>% 
+  ungroup()  
+  
+  
+ #### 
+
+total_biomass <- allo %>%
+  group_by(location, tree) %>%
+  summarise_at(vars(
+    tot_dry_leaves, tot_fr_leaves, tot_dry_wd, tot_fr_wd,
+    tot_dry_cherries, tot_cherries, tot_stump_dry, stump_fr,
+    tot_dry_sr, tot_fr_sr, tot_dry_fr, tot_fr_fr
+  ), funs(sum)) %>%
+  mutate(tot_dry_biomass = (tot_dry_leaves + tot_dry_wd + tot_dry_cherries + tot_stump_dry + tot_dry_sr + tot_dry_fr)) %>%
+  mutate(tot_fr_biomass = (tot_fr_leaves + tot_fr_wd + tot_cherries + stump_fr + tot_fr_sr + tot_fr_fr)) %>% 
+  ungroup() %>% 
+  select(location,tree,tot_fr_biomass,tot_dry_biomass) 
+  
+  
+fraction_within_tree <- left_join(fraction_within_tree, total_biomass) %>%
+  mutate(fra_fr_leaves = (tot_fr_leaves / tot_fr_biomass)) %>%
+  mutate(fra_fr_wd = (tot_fr_wd / tot_fr_biomass)) %>%
+  mutate(fra_fr_cherries = (tot_cherries / tot_fr_biomass)) %>%
+  mutate(fra_fr_stump = (stump_fr / tot_fr_biomass)) %>%
+  mutate(fra_fr_sr = (tot_fr_sr / tot_fr_biomass)) %>%
+  mutate(fra_fr_fr = (tot_fr_fr / tot_fr_biomass)) %>%
+  mutate(fra_dry_leaves = (tot_dry_leaves / tot_dry_biomass)) %>%
+  mutate(fra_dry_wd = (tot_dry_wd / tot_dry_biomass)) %>%
+  mutate(fra_dry_cherries = (tot_dry_cherries / tot_dry_biomass)) %>%
+  mutate(fra_dry_stump = (tot_stump_dry / tot_dry_biomass)) %>%
+  mutate(fra_dry_sr = (tot_dry_sr / tot_dry_biomass)) %>%
+  mutate(fra_dry_fr = (tot_dry_fr / tot_dry_biomass)) %>%
+  ungroup() %>%
+  select(location,tree,section,fra_fr_leaves:fra_dry_fr) %>% 
+  gather(measurement, value, fra_fr_leaves:fra_dry_fr)
+
+
+
+summ_fraction_within_tree <-fraction_within_tree %>% 
+  summarySE(measurevar = "value", groupvars =c("location","section","measurement")) %>% 
+  mutate(status = if_else(str_detect(measurement,"dry"),"Dry Biomass","Fresh Biomass")) %>% 
+  mutate(status = factor(status,levels= c('Fresh Biomass','Dry Biomass'))) %>% 
+  mutate(value= if_else(str_detect(measurement,"leaves"),value,-value)) 
+
+
+## need to adjust error bars due to bar stacking
+
+fra_cherries_wood <- summ_fraction_within_tree %>% 
+  mutate(value2 = if_else(str_detect(measurement,"cherries|wd") ,value, 0)) %>% 
+  group_by(status,location,section) %>% 
+  summarise_at(vars(value2),funs(sum))
+
+error_bar_fra <- left_join(summ_fraction_within_tree, fra_cherries_wood) %>% 
+  mutate(fin_value = if_else(str_detect(measurement,"cherries"), value2,value ))
+```
+<div style="margin-bottom:25px;">
+</div>
+
+### Fractional biomass
+
+<div style="margin-bottom:25px;">
+</div>
+```{r graph_fraction_within_tree, echo = FALSE ,fig.width = 7, fig.height = 7, fig.cap= '**Fig. 4** Fractional Fresh and Dry Biomass Distribution within trees across sections in Phetlamka and Xekatam (±se)'}
+colors <- c("fra_fr_leaves" = "#66A61E", "fra_dry_leaves" = "#66A61E", "tot_fr_leaves" = "#66A61E", "tot_dry_leaves" = "#66A61E", "tot_cherries" = "red2", "tot_dry_cherries" = "red2", "fra_fr_cherries" = "red2", "fra_dry_cherries" = "red2", "tot_fr_wd" = "tan4", "tot_dry_wd" = "tan4", "fra_fr_wd" = "tan4", "fra_dry_wd" = "tan4", "stump_fr" = "gray15", "tot_stump_dry" = "gray15", "fra_fr_stump" = "gray15", "fra_dry_stump" = "gray15", "tot_fr_sr" = "gray30", "tot_dry_sr" = "gray30", "fra_fr_sr" = "gray30", "fra_dry_sr" = "gray30", "tot_fr_fr" = "gray", "tot_dry_fr" = "gray", "fra_fr_fr" = "gray", "fra_dry_fr" = "gray")
+
+
+breakss <- c("fra_fr_leaves", "fra_fr_cherries", "fra_fr_wd", "fra_fr_stump", "fra_fr_sr", "fra_fr_fr") # so it only shows 6 labels
+labelss <- c("Leaves", "Cherries", "Wood", "Stump", "Structural Roots", "Fine Roots")
+
+
+
+
+graph_fraction_within_tree <- ggplot(
+  summ_fraction_within_tree,
+  aes(x = section, y = value, fill = measurement)
+) +
+  geom_bar(stat = "identity", alpha =  0.85) +
+  geom_errorbar(data = error_bar_fra, aes(ymin = fin_value + se, ymax = fin_value - se, width = 0.04), position = position_dodge(0.4)) +
+  xlab("Section") +
+  ylab("Biomass Fraction") +
+  scale_fill_manual(
+    values = colors,
+    name = "Tissue",
+    breaks = breakss,
+    labels = labelss
+  ) +
+  coord_flip() +
+  facet_grid(status ~ location) +
+  theme_pubr() +
+  theme(
+    strip.background = element_rect(size = 0.7),
+
+    strip.text.x = element_text(
+      size = 11, face = "bold"
+    ),
+    strip.text.y = element_text(
+      size = 11, face = "bold"
+    ),
+
+    panel.border = element_rect(color = "gray 50", fill = NA)
+  )
+
+print(graph_fraction_within_tree)
+
+```
+
+
+### Total aboveground distribution between tissues 
+<div style="margin-bottom:25px;">
+</div>
+
+```{r above_production, echo = FALSE,fig.width = 7, fig.height = 7, fig.cap= '**Fig. 5** Total Aboveground Fresh and Dry Biomass (g) between tissues within trees in Phetlamka and Xekatam (±se)'}
+
+
+above_df <- allo %>%
+  group_by(location, tree) %>%
+  summarise_at(vars(
+    tot_dry_cherries, tot_cherries, tot_dry_wd, tot_fr_wd, tot_dry_leaves, tot_fr_leaves ), funs(sum)) %>%
+  gather(measurement,value, tot_dry_cherries : tot_fr_leaves) %>% 
+  ungroup()
+ 
+summ_above <-above_df %>%
+  summarySE(measurevar = "value", groupvars = c('location','measurement')) %>% 
+  mutate(status = if_else(str_detect(measurement,"dry"),"Dry Biomass","Fresh Biomass")) %>% 
+  mutate(status = factor(status,levels= c('Fresh Biomass','Dry Biomass'))) %>% 
+  mutate(Tissue = case_when(
+      str_detect(measurement, "cherries") ~ "Cherries", 
+      str_detect(measurement, "wd") ~ "Wood",
+      str_detect(measurement, "leaves") ~ "Leaves"
+                   ))
+
+
+  
+colors <- c(
+  "Leaves" = "#66A61E",
+  "Cherries" = "red2",
+  "Wood" = "tan4"
+)
+  
+ 
+
+
+  above_production <- ggplot(summ_above, aes( x= Tissue, y = value, fill = Tissue))+
+  geom_bar(stat = "identity", width = 0.5,  alpha = 0.85) +
+  geom_hline(aes(yintercept = 0)) +
+  geom_errorbar(aes(ymin = value - se, ymax = value + se), width = 0.04) +
+  # labs(title= "Above and Belowground Biomass Distribution ")+
+  xlab('Location') +
+  ylab("Total Biomass (g)") +
+  scale_fill_manual(
+    values = colors,
+    name = "Location",
+    breaks = breaks,
+    labels = labels
+  ) +
+  facet_grid(status ~location) +
+  theme_pubr() +
+  theme(
+    strip.background = element_rect(size = .7),
+    strip.text.x = element_text(
+      size = 11, face = "bold"
+    ),
+    strip.text.y = element_text(
+      size = 11, face = "bold"
+    ),
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.border = element_rect(color = "gray 50", fill = NA)
+  )
+
+print(above_production)
+
+
+```
+
+
+<div style="margin-bottom:50px;">
+</div>
+
+
+
+
+## __Branch-level Analyses__
+<div style="margin-bottom:50px;">
+</div>
+ 
+The structure of the following five graphs is the same; the center displays the relationship between the two variables while the margins represent the density plots of each variable. 
+
+The average load of cherries per branch is similar at both locations ( __Fig. 6 -9 __), with the majority of branches producing small amounts of cherries. However, when we look at the branches with the heaviest loads, we see that plants in Xekatam have more branches with heavy loads ( __Fig. 7__). In general, there seems to be a weak correlation between cherry load and leaf area, branch length and branch diameter ( __Fig. 6, 8 & 9__). Moreover, there is a strong relationship between branch cross-sectional area and leaf area  ( __Fig. 10__), representative of water supply and evaporative demand. 
+
+
+
+
+### Relationship between cherry and leaf dry mass 
+<div style="margin-bottom:25px;">
+</div>
+```{r cherry_by_branch, echo = FALSE ,fig.width = 7, fig.height = 7, fig.cap = '**Fig. 6** Cherry dry mass (g) production by leaf dry mass (g). Top margin displays the leaf dry mass density plot, while the right margin plot the cherry dry mass density plot.' }
+colorss <- c("#337ab7", "#b77033")
+
+df <- allo %>%
+   filter(!(section %in% c("110", "120", "130"))) %>% 
+   filter( branch != "0")
+
+scatter <- ggscatter(df,
+  x = "tot_dry_leaves", y = "tot_dry_cherries",
+  color = "location", size = 4, alpha = .7, palette = c("#337ab7", "#b77033"), ylab = ("Cherry dry mass (g) / branch"), xlab = ("Leaf dry mass (g) / branch")
+)
+
+
+xplot <- axis_canvas(scatter, axis = "x") +
+  geom_density(data = df, aes(x = tot_dry_leaves, fill = location, color = location), alpha = 0.5, adjust = 2) +
+  scale_fill_manual(values = colorss) +
+  scale_color_manual(values = colorss)
+
+yplot <- axis_canvas(scatter, axis = "y", coord_flip = TRUE) +
+  geom_density(data = df, aes(x = tot_dry_cherries, fill = location, color = location), alpha = 0.5, adjust = 2) +
+  scale_fill_manual(values = c("#337ab7", "#b77033")) +
+  scale_color_manual(values = c("#337ab7", "#b77033")) +
+  coord_flip()
+
+p1 <- insert_xaxis_grob(scatter, xplot, grid::unit(.2, "null"), position = "top")
+p2 <- insert_yaxis_grob(p1, yplot, grid::unit(.2, "null"), position = "right")
+
+cherry_by_branch <- ggdraw(p2)
+print(cherry_by_branch)
+
+```
+<div style="margin-bottom:50px;">
+</div>
+
+
+
+### Relationship between cherry and leaf dry mass in  the highest producing branches (> 15 g)
+<div style="margin-bottom:25px;">
+</div>
+```{r cherry_by_leafarea, echo = FALSE, fig.width = 7, fig.height = 7, fig.cap = '**Fig. 7** Cherry dry mass (g) by leaf dry mass (g) in branches highest-producting branches (>15g). Top margin displays the leaf dry mass density plot, while the right margin plot the cherry dry mass density plot.'}
+df <- allo %>%
+   filter(!(section %in% c("110", "120", "130"))) %>% 
+   filter( branch != "0") %>% 
+   filter (tot_dry_cherries > 15)
+
+scatter <- ggscatter(df,
+  x = "tot_dry_leaves", y = "tot_dry_cherries",
+  color = "location", size = 4, alpha = .7, palette = c("#337ab7", "#b77033"), ylab = ("Cherry dry mass (g) / branch"), xlab = ("Leaf dry mass (g) / branch")
+)
+
+
+xplot <- axis_canvas(scatter, axis = "x") +
+  geom_density(data = df, aes(x = tot_dry_leaves, fill = location, color = location), alpha = 0.5, adjust = 2) +
+  scale_fill_manual(values = colorss) +
+  scale_color_manual(values = colorss)
+
+yplot <- axis_canvas(scatter, axis = "y", coord_flip = TRUE) +
+  geom_density(data = df, aes(x = tot_dry_cherries, fill = location, color = location), alpha = 0.5, adjust = 2) +
+  scale_fill_manual(values = c("#337ab7", "#b77033")) +
+  scale_color_manual(values = c("#337ab7", "#b77033")) +
+  coord_flip()
+
+p1 <- insert_xaxis_grob(scatter, xplot, grid::unit(.2, "null"), position = "top")
+p2 <- insert_yaxis_grob(p1, yplot, grid::unit(.2, "null"), position = "right")
+
+cherry_by_leafarea <- ggdraw(p2)
+print(cherry_by_leafarea)
+
+
+
+```
+<div style="margin-bottom:50px;">
+</div>
+
+### Relationship between cherry dry mass and branch length
+<div style="margin-bottom:25px;">
+</div>
+
+```{r cherry_by_length, echo = FALSE, fig.width = 7, fig.height = 7, fig.cap = '__Fig. 8__ Cherry dry mass (g) by branch length (cm).Top margin displays the branch length density plot, while the right margin plot the cherry dry mass density plot.'}
+
+df <- allo %>%
+   filter(!(section %in% c("110", "120", "130"))) %>% 
+   filter( branch != "0") 
+
+scatter <- ggscatter(df,
+  x = "br_length_cm", y = "tot_dry_cherries",
+  color = "location", size = 4, alpha = .7, palette = c("#337ab7", "#b77033"), ylab = ("Cherry dry mass (g) / branch"), xlab = ("Branch length (cm)")
+)
+
+
+xplot <- axis_canvas(scatter, axis = "x") +
+  geom_density(data = df, aes(x = br_length_cm, fill = location, color = location), alpha = 0.5, adjust = 2) +
+  scale_fill_manual(values = colorss) +
+  scale_color_manual(values = colorss)
+
+yplot <- axis_canvas(scatter, axis = "y", coord_flip = TRUE) +
+  geom_density(data = df, aes(x = tot_dry_cherries, fill = location, color = location), alpha = 0.5, adjust = 2) +
+  scale_fill_manual(values = c("#337ab7", "#b77033")) +
+  scale_color_manual(values = c("#337ab7", "#b77033")) +
+  coord_flip()
+
+p1 <- insert_xaxis_grob(scatter, xplot, grid::unit(.2, "null"), position = "top")
+p2 <- insert_yaxis_grob(p1, yplot, grid::unit(.2, "null"), position = "right")
+
+cherry_by_length <- ggdraw(p2)
+print(cherry_by_length)
+
+
+
+
+```
+<div style="margin-bottom:50px;">
+</div>
+
+
+### Relationship between cherry dry mass and branch diameter  
+<div style="margin-bottom:25px;">
+</div>
+
+```{r cherry_by_diam, echo = FALSE, fig.width = 7, fig.height = 7, fig.cap = '__Fig. 9__ Cherry dry mass (g) by branch diameter (mm). Top margin displays the branch diameter density plot, while the right margin plot the cherry dry mass density plot.'}
+df <- allo %>%
+   filter(!(section %in% c("110", "120", "130"))) %>% 
+   filter( branch != "0") 
+
+scatter <- ggscatter(df,
+  x = "avg_diam", y = "tot_dry_cherries",
+  color = "location", size = 4, alpha = .7, palette = c("#337ab7", "#b77033"), ylab = ("Cherry dry mass (g) / branch"), xlab = ("Branch diameter (mm) / branch")
+)
+
+
+xplot <- axis_canvas(scatter, axis = "x") +
+  geom_density(data = df, aes(x = avg_diam, fill = location, color = location), alpha = 0.5, adjust = 2) +
+  scale_fill_manual(values = colorss) +
+  scale_color_manual(values = colorss)
+
+yplot <- axis_canvas(scatter, axis = "y", coord_flip = TRUE) +
+  geom_density(data = df, aes(x = tot_dry_cherries, fill = location, color = location), alpha = 0.5, adjust = 2) +
+  scale_fill_manual(values = c("#337ab7", "#b77033")) +
+  scale_color_manual(values = c("#337ab7", "#b77033")) +
+  coord_flip()
+
+p1 <- insert_xaxis_grob(scatter, xplot, grid::unit(.2, "null"), position = "top")
+p2 <- insert_yaxis_grob(p1, yplot, grid::unit(.2, "null"), position = "right")
+
+cherry_by_diam <- ggdraw(p2)
+print(cherry_by_diam)
+
+
+```
+<div style="margin-bottom:50px;">
+</div>
+
+### Relationship between leaf and branch cross-sectional areas  
+<div style="margin-bottom:25px;">
+</div>
+
+```{r branch_leaf_area, echo = FALSE, fig.width = 7, fig.height = 7, fig.cap = '__Fig. 10__ Leaf area (m<sup>2</sup>) by branch area (m<sup>2</sup>), top margin displays the branch cross-sectional area density plot while the left margin the leaf area density plot'}
+df <- allo %>%
+   filter(!(section %in% c("110", "120", "130"))) %>% 
+   filter( branch != "0") 
+
+scatter <- ggscatter(df,
+  x = "br_area", y = "tot_leaves_area",
+  color = "location", size = 4, alpha = .7, palette = c("#337ab7", "#b77033"), ylab = ("Leaf area"), xlab = ("Branch cross-sectional area ")
+)
+
+
+xplot <- axis_canvas(scatter, axis = "x") +
+  geom_density(data = df, aes(x = br_area, fill = location, color = location), alpha = 0.5, adjust = 2) +
+  scale_fill_manual(values = colorss) +
+  scale_color_manual(values = colorss)
+
+yplot <- axis_canvas(scatter, axis = "y", coord_flip = TRUE) +
+  geom_density(data = df, aes(x = tot_leaves_area, fill = location, color = location), alpha = 0.5, adjust = 2) +
+  scale_fill_manual(values = c("#337ab7", "#b77033")) +
+  scale_color_manual(values = c("#337ab7", "#b77033")) +
+  coord_flip()
+
+p1 <- insert_xaxis_grob(scatter, xplot, grid::unit(.2, "null"), position = "top")
+p2 <- insert_yaxis_grob(p1, yplot, grid::unit(.2, "null"), position = "right")
+
+branch_leaf_area <- ggdraw(p2)
+print(branch_leaf_area)
+```
+
